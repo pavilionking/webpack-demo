@@ -24,30 +24,33 @@ function makeConf(options) {
     var debug = options.debug !== undefined ? options.debug : true;
     var entries = genEntries(); 
     var chunks = Object.keys(entries);
-    entries.common = [
-        'webpack-dev-server/client?http://127.0.0.1:3000', // WebpackDevServer host and port
-        'webpack/hot/only-dev-server',
-    ];
+    if (debug) {
+        entries.common = [
+            'webpack-dev-server/client?http://127.0.0.1:3000', // WebpackDevServer host and port
+            'webpack/hot/only-dev-server',
+        ];
+    }
+
     var config = {
         entry: entries,
 
         output: {
             // 在debug模式下，__build目录是虚拟的，webpack的dev server存储在内存里
             path: path.resolve(debug ? '__build/' : assets),
-            filename: 'js/[name].js',
+            filename: 'js/[name].[hash:8].js',
             //chunkFilename: 'js/[chunk_hash:8].chunk.min.js',
             //hotUpdateChunkFilename: 'js/[id].[chunk_hash:8].min.js',
             publicPath: '/'
         },
         externals:{
             'jQuery':'window.jQuery',
-            '$':'window.Zepto',
+            '$':'jQuery',
         },
 
         resolve: {
             root: [srcDir, path.resolve(process.cwd(),'./node_modules')],
             alias: sourceMap,
-            extensions: ['', '.js', '.css', '.less', '.scss', '.tpl', '.png', '.jpg']
+            extensions: ['', '.js', '.webpack.js', '.css', '.less', '.scss', '.tpl', '.png', '.jpg', '.web.tsx', '.web.ts', '.web.jsx', '.web.js', '.ts', '.tsx', 'jsx', '.json']
         },
         resolveLoader: {
             root: path.join(__dirname, 'node_modules')
@@ -58,18 +61,22 @@ function makeConf(options) {
                 {
                     test: /\.(jpe?g|png|gif|svg)$/i,
                     //注意后面的name=xx，这里很重要否则打包后会出现找不到资源的
-                    loader: 'url-loader?limit=2&minetype=image/jpg&name=./images/[name]_[hash].[ext]'
+                    loader: 'url-loader?limit=8192&minetype=image/jpg&name=./images/[name]_[hash].[ext]'
                 },
                 {
-                    test: /\.(woff|eot|ttf)$/i,
+                    test: /\.(woff[2]?|eot|ttf)$/i,
                     loader: 'url?limit=10000&name=fonts/[name].[ext]'
                 },
                 {test: /\.(tpl|ejs)$/, loader: 'ejs'},
                 {
                     test: /\.js[x]?$/, 
                     exclude: /node_modules/, 
-                    loaders: ['react-hot', 'babel?presets[]=es2015,presets[]=react']
-                }
+                    loaders: ['react-hot', 'babel?presets[]=es2015,presets[]=react,presets[]=stage-0']
+                },
+                {
+                    test: /\.ts[x]$/,
+                    loader: 'typescript-loader?typescriptCompiler=jsx-typescript'
+                  }
             ]
         },
 
@@ -126,7 +133,7 @@ function makeConf(options) {
         config.module.loaders.push(lessLoader);
         config.module.loaders.push(sassLoader);
         config.plugins.push(
-            new ExtractTextPlugin('css/[name].css', {
+            new ExtractTextPlugin('css/[name].[hash:8].css', {
                 // 当allChunks指定为false时，css loader必须指定怎么处理
                 // additional chunk所依赖的css，即指定`ExtractTextPlugin.extract()`
                 // 第一个参数`notExtractLoader`，一般是使用style-loader
@@ -135,7 +142,8 @@ function makeConf(options) {
             })
         );
 
-        config.plugins.push(new UglifyJsPlugin());
+        config.plugins.push(new UglifyJsPlugin({output: {comments: false}, compress: {warnings: false }}));
+        config.plugins.push(new webpack.DefinePlugin({'process.env':{'NODE_ENV': JSON.stringify('production')}}));
     }
     // 自动生成入口文件，入口js名必须和入口文件名相同
     // 例如，a页的入口文件是a.html，那么在js目录下必须有一个a.js作为入口文件
@@ -153,6 +161,7 @@ function makeConf(options) {
                 //     collapseWhitespace: true,
                 //     removeComments: true
                 // },
+                inject: "head",
                 filename: filename
             };
 
