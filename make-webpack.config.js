@@ -19,11 +19,19 @@ var srcDir = path.resolve(process.cwd(), './src');
 var assets = 'build/';
 var sourceMap = require('./aliasMap.json');
 
+
 function makeConf(options) {
     options = options || {};
     var debug = options.debug !== undefined ? options.debug : true;
-    var entries = genEntries(); 
+
+    var manifestUrl = debug ? "./__build/vendor-manifest.json" : "./build/vendor-manifest.json";
+    //var vendorUrl = debug ? "./__build/scripts/vendor.c946aca7.js" : "./__build/scripts/vendor.c946aca7.js";
+
+
+    var entries = genEntries();
+    //entries.vendor = vendorUrl;
     var chunks = Object.keys(entries);
+
     if (debug) {
         entries.common = [
             'webpack-dev-server/client?http://127.0.0.1:3000', // WebpackDevServer host and port
@@ -37,10 +45,10 @@ function makeConf(options) {
         output: {
             // 在debug模式下，__build目录是虚拟的，webpack的dev server存储在内存里
             path: path.resolve(debug ? '__build/' : assets),
-            filename: 'js/[name].[hash:8].js',
-            //chunkFilename: 'js/[chunk_hash:8].chunk.min.js',
-            //hotUpdateChunkFilename: 'js/[id].[chunk_hash:8].min.js',
-            publicPath: '/'
+            filename: 'scripts/[name].[hash:8].js',
+            chunkFilename: 'scripts/[name].[hash:8].chunk.js',
+            hotUpdateChunkFilename: 'scripts/[id].[hash:8].chunk.js',
+            publicPath: debug ? '/' : '/crm/'
         },
         externals:{
             'jQuery':'window.jQuery',
@@ -52,6 +60,7 @@ function makeConf(options) {
             alias: sourceMap,
             extensions: ['', '.js', '.webpack.js', '.css', '.less', '.scss', '.tpl', '.png', '.jpg', '.web.tsx', '.web.ts', '.web.jsx', '.web.js', '.ts', '.tsx', 'jsx', '.json']
         },
+
         resolveLoader: {
             root: path.join(__dirname, 'node_modules')
         },
@@ -69,8 +78,8 @@ function makeConf(options) {
                 },
                 {test: /\.(tpl|ejs)$/, loader: 'ejs'},
                 {
-                    test: /\.js[x]?$/, 
-                    exclude: /node_modules/, 
+                    test: /\.js[x]?$/,
+                    exclude: /node_modules/,
                     loaders: ['react-hot', 'babel?presets[]=es2015,presets[]=react,presets[]=stage-0']
                 },
                 {
@@ -81,11 +90,16 @@ function makeConf(options) {
         },
 
         plugins: [
-            new CommonsChunkPlugin({
-                name: 'common',
-                chunks: chunks,
-                // Modules must be shared between all entries
-                minChunks: chunks.length // 提取所有chunks共同依赖的模块
+            // new CommonsChunkPlugin({
+            //     name: 'common',
+            //     chunks: chunks,
+            //     // Modules must be shared between all entries
+            //     minChunks: chunks.length // 提取所有chunks共同依赖的模块
+            // }),
+            new webpack.DllReferencePlugin({
+              context: __dirname,
+              manifest: require(manifestUrl),
+              name: 'vendor'
             }),
             new webpack.HotModuleReplacementPlugin()
         ],
@@ -145,9 +159,10 @@ function makeConf(options) {
         config.plugins.push(new UglifyJsPlugin({output: {comments: false}, compress: {warnings: false }}));
         config.plugins.push(new webpack.DefinePlugin({'process.env':{'NODE_ENV': JSON.stringify('production')}}));
     }
+
     // 自动生成入口文件，入口js名必须和入口文件名相同
     // 例如，a页的入口文件是a.html，那么在js目录下必须有一个a.js作为入口文件
-    var pages = fs.readdirSync(srcDir + "/tpl"); 
+    var pages = fs.readdirSync(srcDir + "/tpl");
 
     pages.forEach(function(filename) {
         var m = filename.match(/(.+)\.html$/);
@@ -167,7 +182,7 @@ function makeConf(options) {
 
             if(m[1] in config.entry) {
                 conf.inject = 'body';
-                conf.chunks = ['common', m[1]];
+                conf.chunks = [m[1]];
             }
 
             config.plugins.push(new HtmlWebpackPlugin(conf));
@@ -176,8 +191,12 @@ function makeConf(options) {
     return config;
 }
 
+/**
+ * 获取入口文件
+ * @return
+ */
 function genEntries() {
-    var jsDir = path.resolve(srcDir, 'js');
+    var jsDir = path.resolve(srcDir, 'scripts');
     var names = fs.readdirSync(jsDir);
     var map = {};
 
@@ -188,7 +207,6 @@ function genEntries() {
 
         if(entry) map[entry] = entryPath;
     });
-
     return map;
 }
 
